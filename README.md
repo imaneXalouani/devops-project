@@ -1,198 +1,95 @@
-# 🚀 DevOps Final Project — Master DSBD & IA
+# Cloud DevOps Delivery Lab
 
-**Stack**: Flask API · Docker · GitHub Actions · Kubernetes · Terraform · Ansible · Prometheus · Grafana
+An academic project connecting a **Flask task API, automated tests, Docker images and Kubernetes manifests**, with Terraform and Ansible for an AWS lab environment.
 
----
+The repository demonstrates how application code, infrastructure and delivery configuration fit together. It is a learning environment rather than a managed production service.
 
-## 📁 Project Structure
+## Architecture and delivery status
 
-```
-devops-project/
-├── app/                        # Flask REST API + tests
-│   ├── app.py
-│   ├── test_app.py
-│   └── requirements.txt
-├── docker/                     # Containerization
-│   ├── Dockerfile
-│   ├── .dockerignore
-│   └── docker-compose.yml
-├── k8s/                        # Kubernetes manifests
-│   ├── deployment.yaml         # Deployment + Service + ConfigMap
-│   ├── hpa.yaml                # HorizontalPodAutoscaler
-│   └── ingress.yaml
-├── terraform/                  # AWS infrastructure as code
-│   ├── main.tf
-│   ├── variables.tf
-│   └── outputs.tf
-├── ansible/                    # Configuration management
-│   ├── inventory.ini
-│   ├── 01-common.yml           # Docker + K8s install (all nodes)
-│   ├── 02-master.yml           # kubeadm init + Flannel CNI
-│   ├── 03-workers.yml          # Join worker nodes
-│   └── 04-deploy-app.yml       # Deploy app to cluster
-├── monitoring/
-│   └── monitoring-stack.yml    # Prometheus + Grafana
-└── .github/workflows/
-    └── ci-cd.yml               # Full CI/CD pipeline
+```mermaid
+flowchart LR
+    C[Code change] --> T[GitHub Actions: pytest]
+    T --> B[Docker build and registry push]
+    B --> I[Image tag and deployment instructions]
+    TF[Terraform: AWS lab] --> AN[Ansible: node setup]
+    AN --> K[Kubernetes cluster]
+    I -. manual deployment .-> K
+    K --> M[Prometheus and Grafana configuration]
 ```
 
----
+**Important:** the current workflow's final job prints Kubernetes deployment commands. It does not execute a cluster rollout. Rolling-update and autoscaling settings exist in the manifests; automatic deployment and zero-downtime behavior must not be inferred from a green workflow alone.
 
-## ⚡ Quick Start
-
-### 1. Prerequisites (local machine)
-```bash
-# Install tools
-brew install terraform ansible awscli   # macOS
-# OR
-sudo apt install terraform ansible awscli  # Ubuntu
-
-# Configure AWS credentials
-aws configure
-# Enter: Access Key ID, Secret, Region (us-east-1), output (json)
-
-# Generate SSH key (if not already)
-ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa
-```
-
-### 2. Provision AWS with Terraform
-```bash
-cd terraform/
-
-# Initialize Terraform
-terraform init
-
-# Preview what will be created
-terraform plan
-
-# Create 2 EC2 instances (master + worker)
-terraform apply
-
-# Note the outputs:
-# master_public_ip = "x.x.x.x"
-# worker_public_ip = "x.x.x.x"
-```
-
-### 3. Update Ansible Inventory
-Edit `ansible/inventory.ini` and replace:
-- `MASTER_PUBLIC_IP` → value from terraform output
-- `WORKER_PUBLIC_IP` → value from terraform output
+## Try the API locally first
 
 ```bash
-# Test connectivity
-ansible -i ansible/inventory.ini k8s_cluster -m ping
+git clone https://github.com/shirahex/devops-project.git
+cd devops-project
+python -m venv .venv
+# macOS/Linux
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -r app/requirements.txt
+cd app
+python -m pytest test_app.py -v
+python app.py
 ```
 
-### 4. Configure Kubernetes with Ansible
-```bash
-cd ansible/
-
-# Step 1: Install Docker + K8s on all nodes
-ansible-playbook -i inventory.ini 01-common.yml
-
-# Step 2: Init master node
-ansible-playbook -i inventory.ini 02-master.yml
-
-# Step 3: Join worker node
-ansible-playbook -i inventory.ini 03-workers.yml
-```
-
-### 5. Set Up GitHub Actions Secrets
-
-In your GitHub repo → Settings → Secrets → Actions, add:
-
-| Secret | Value |
-|--------|-------|
-| `DOCKERHUB_USERNAME` | Your DockerHub username |
-| `DOCKERHUB_TOKEN` | DockerHub access token |
-| `KUBECONFIG` | Base64 of `~/.kube/config` from master |
+API: http://localhost:5000
 
 ```bash
-# Get KUBECONFIG secret value:
-ssh ubuntu@MASTER_IP "cat ~/.kube/config" | base64
-```
-
-### 6. Update K8s manifests
-
-In `k8s/deployment.yaml`, replace:
-```
-image: YOUR_DOCKERHUB_USERNAME/devops-api:latest
-```
-with your actual DockerHub username.
-
-### 7. Initial Manual Deploy (first time)
-```bash
-ansible-playbook -i ansible/inventory.ini ansible/04-deploy-app.yml \
-  -e "docker_image=YOUR_DOCKERHUB_USERNAME/devops-api:latest"
-```
-
----
-
-## 🔄 CI/CD Demo Flow (for presentation)
-
-The pipeline triggers automatically on every push to `main`:
-
-```
-git push → GitHub Actions triggers →
-  1. Tests run (pytest)
-  2. Docker image built & pushed to DockerHub
-  3. kubectl rollout to Kubernetes
-  4. Zero-downtime rolling update
-```
-
-**Live demo command:**
-```bash
-# Make a visible change in app.py, then:
-git add .
-git commit -m "feat: update API message for demo"
-git push origin main
-# Watch GitHub Actions tab → then verify on cluster
-kubectl get pods -n devops-app -w
-```
-
----
-
-## 📊 Monitoring (Optional)
-
-```bash
-# Deploy Prometheus + Grafana
-kubectl apply -f monitoring/monitoring-stack.yml
-
-# Get Grafana NodePort
-kubectl get svc grafana-service -n monitoring
-
-# Access: http://MASTER_IP:NODEPORT
-# Login: admin / admin123
-```
-
----
-
-## 🧹 Clean Up (important — avoid AWS charges!)
-
-```bash
-cd terraform/
-terraform destroy
-```
-
----
-
-## 📋 API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/` | API info + version |
-| GET | `/health` | Health check |
-| GET | `/tasks` | List all tasks |
-| POST | `/tasks` | Create a task |
-| PUT | `/tasks/:id` | Update a task |
-| DELETE | `/tasks/:id` | Delete a task |
-
-**Test locally:**
-```bash
-docker-compose -f docker/docker-compose.yml up
 curl http://localhost:5000/health
 curl http://localhost:5000/tasks
-curl -X POST http://localhost:5000/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"title": "New DevOps task"}'
 ```
+
+Tasks are held in memory. They reset on process restart and are not shared between Gunicorn workers. Use a shared database before treating this as a multi-worker task service.
+
+## Run with Docker
+
+From the repository root:
+
+```bash
+docker compose -f docker/docker-compose.yml up --build
+```
+
+The Compose build context resolves to `app/`; the Dockerfile runs the existing pytest suite during its build. Stop the local containers with `docker compose -f docker/docker-compose.yml down`.
+
+## Repository map
+
+| Path | What to inspect |
+| --- | --- |
+| [app/](app/) | Flask API, dependencies and nine pytest cases |
+| [docker/](docker/) | Multi-stage image and local Compose file |
+| [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) | Test, image build/push and deployment guidance |
+| [k8s/](k8s/) | Deployment, service, probes, HPA and ingress |
+| [terraform/](terraform/) | AWS resources and outputs |
+| [ansible/](ansible/) | Node configuration and deployment playbooks |
+| [monitoring/](monitoring/) | Prometheus/Grafana lab configuration |
+
+## AWS and Kubernetes lab
+
+Provisioning is optional for reviewing the application. **Terraform creates billable AWS resources.** Review the plan, variables, region, networking and access configuration before applying it to your own account.
+
+1. Configure AWS CLI credentials locally and review `terraform/variables.tf`.
+2. From `terraform/`, run `terraform init` and `terraform plan`; apply only after reviewing the resources and cost.
+3. Put your lab host addresses into `ansible/inventory.ini`.
+4. Run the numbered node setup playbooks in order, then `04-deploy-app.yml` with your registry image.
+5. Validate pods, services, probes, ingress and metrics in the actual cluster.
+6. Destroy lab resources when finished, after checking that no required workload depends on them.
+
+The Kubernetes and monitoring files are lab examples. Review public access, credentials, persistence and network rules before use. The HPA requires resource metrics; creating its YAML alone does not provide a metrics server.
+
+## GitHub Actions
+
+The workflow tests changes on the configured branches and PRs. Its main-branch image build requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets. Never put tokens or kubeconfig contents in source files.
+
+The final job currently provides deployment guidance only. The earlier README's `KUBECONFIG` secret is not consumed by this workflow.
+
+## API routes
+
+`GET /` · `GET /health` · `GET /tasks` · `POST /tasks` · `PUT /tasks/<id>` · `DELETE /tasks/<id>`
+
+A create request accepts JSON such as `{"title": "Review the deployment configuration"}`. Inspect [app.py](app/app.py) and [test_app.py](app/test_app.py) for behavior and validation.
+
+## Next work
+
+Persist task data, integrate an explicitly approved rollout step, add reproducible cluster verification and version the monitoring/deployment configuration. No availability or performance SLA is claimed by this repository.
