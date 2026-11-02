@@ -93,3 +93,8 @@ A create request accepts JSON such as `{"title": "Review the deployment configur
 ## Next work
 
 Persist task data, integrate an explicitly approved rollout step, add reproducible cluster verification and version the monitoring/deployment configuration. No availability or performance SLA is claimed by this repository.
+
+
+---
+
+Original repository: [shirahex/devops-project](https://github.com/shirahex/devops-project). Academic team project by Marouane Daouki and Imane Alouani.
